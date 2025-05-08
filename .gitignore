@@ -2,7 +2,5 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-node_modules/
-dist/
 *.log
-.cache/
+
