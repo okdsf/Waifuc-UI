@@ -1,0 +1,54 @@
+set http_proxy=http://127.0.0.1:7897
+set https_proxy=http://127.0.0.1:7897
+python main.py
+C:\Users\Administrator\Desktop\AA\Real-ESRGAN\weights\RealESRGAN_x4plus.pth
+896x1792
+960x1920
+800x1600
+
+
+
+如果 split_person=True（默认）：
+
+    调用 detect_person 函数，检测图像中的角色，生成每个角色的边界框（px）。
+    裁剪出角色区域（person_image = item.image.crop(px)），生成对应的 ImageItem。
+    这些角色图像（person_image）会作为后续半身（detect_halfbody）和头部（detect_heads）分割的输入。
+    支持多角色图像，每个角色会生成一个独立的 ImageItem（文件名如 filebody_person1.ext）。
+
+如果 split_person=False：
+
+    跳过角色分割，直接使用原始输入图像（item.image）作为后续半身和头部分割的输入。
+    _split_person 方法会返回原始图像（yield 1, item），不执行裁剪。
+
+
+return_person（默认 True）：
+
+    控制内容：决定是否返回角色整体分割的结果。
+    对应输出：角色分割生成的 ImageItem，包含整个角色区域的裁剪图像（通过 detect_person 检测并裁剪）。
+    效果：
+        如果 return_person=True，iter 方法会 yield 角色分割的 ImageItem（例如，文件名为 filebody_person1.ext 的图像）。
+        如果 return_person=False，角色分割结果不会返回到外部，但仍会在内部用于后续半身和头部分割。
+
+return_halfbody（默认 True）：
+
+    控制内容：决定是否返回半身分割的结果。
+    对应输出：半身分割生成的 ImageItem，包含角色上半身的裁剪图像（通过 detect_halfbody 检测并裁剪）。
+    效果：
+        如果 return_halfbody=True，iter 方法会 yield 半身分割的 ImageItem（例如，文件名为 filebody_person1_halfbody.ext 的图像）。
+        如果 return_halfbody=False，半身分割结果不会返回到外部，但分割过程仍会执行。
+
+return_head（默认 True）：
+
+    控制内容：决定是否返回头部分割的结果。
+    对应输出：头部分割生成的 ImageItem，包含角色头部区域的裁剪图像（通过 detect_heads 检测并裁剪，基于 head_scale 扩展）。
+    效果：
+        如果 return_head=True，iter 方法会 yield 头部分割的 ImageItem（例如，文件名为 filebody_person1_head.ext 的图像）。
+        如果 return_head=False，头部分割结果不会返回到外部，但仍会用于后续眼睛分割（如果 split_eyes=True）。
+
+return_eyes（默认 False）：
+
+    控制内容：决定是否返回眼睛分割的结果。
+    对应输出：眼睛分割生成的 ImageItem，包含角色眼睛区域的裁剪图像（通过 detect_eyes 检测并裁剪，基于 eye_scale 扩展）。
+    效果：
+        如果 return_eyes=True，iter 方法会 yield 眼睛分割的 ImageItem（例如，文件名为 filebody_person1_head_eye1.ext 的图像）。
+        如果 return_eyes=False，眼睛分割结果不会返回到外部，但分割过程仍会执行（如果 split_eyes=True）。
