@@ -1,0 +1,13 @@
+2025-05-11 16:12:42,031 - INFO - 开始执行工作流: Three test
+2025-05-11 16:12:42,031 - INFO - 图像来源: LocalSource
+2025-05-11 16:12:42,032 - INFO - 输出目录: C:\Users\Administrator\Desktop\data try\test_out
+2025-05-11 16:12:42,032 - INFO - 从来源获取图像...
+2025-05-11 16:12:42,032 - INFO - 发现 9 个图像文件
+2025-05-11 16:12:42,033 - INFO - 执行步骤 1/2: ModeConvertAction
+2025-05-11 16:12:42,033 - INFO - 步骤 1 输入目录: C:\Users\Administrator\Desktop\data try\prospal
+2025-05-11 16:12:42,033 - INFO - 步骤 1 输出目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmp3oql8g3p\step_1_6c123627
+2025-05-11 16:12:47,872 - INFO - 执行步骤 2/2: BackgroundRemovalAction
+2025-05-11 16:12:47,872 - INFO - 步骤 2 输入目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmp3oql8g3p\step_1_6c123627
+2025-05-11 16:12:47,872 - INFO - 步骤 2 输出目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmp3oql8g3p\step_2_7aae1500
+2025-05-11 16:13:11,137 - INFO - 已将 9 个文件复制到 C:\Users\Administrator\Desktop\data try\test_out
+2025-05-11 16:13:11,138 - INFO - 工作流执行完成. 总图像: 9, 成功: 9, 失败: 0

@@ -1,5 +1,6 @@
 """
 工作流设计组件：实现创建、编辑、查看工作流，添加/删除/排序步骤，导入/导出工作流。
+对应 PyQt5 的 workflow_designer.py。
 """
 import gradio as gr
 import json
@@ -44,11 +45,11 @@ def render():
                     choices=action_registry.get_actions_in_category(categories[0]) or ["无操作可用"],
                     label="选择操作"
                 )
-            # 参数输入区域（动态生成）
-            with gr.Column() as params_container:
-                pass  # 占位，动态渲染将在这里进行
-
-            add_step_btn = gr.Button("添加步骤")
+                # 动态参数输入区域
+                params_container = gr.Column(visible=False)
+                params_inputs = gr.State({})  # 存储参数输入组件
+                params_values = gr.State({})  # 存储参数值
+                add_step_btn = gr.Button("添加步骤")
             steps_table = gr.Dataframe(
                 value=[],
                 headers=["操作", "参数"],
@@ -82,34 +83,46 @@ def render():
         )
 
         # 动态生成参数输入字段
-        @gr.render(inputs=action_dropdown)
-        def render_params_inputs(action_name):
-            if not action_name or action_name == "无操作可用":
-                return
-            params = action_registry.get_action_params(action_name)
-            logger.info(f"Generating inputs for action: {action_name}, params: {params}")
-            with gr.Column():
-                components = []
-                for param_name, default_value in params.items():
-                    if isinstance(default_value, bool):
-                        component = gr.Checkbox(label=param_name, value=default_value)
-                    elif isinstance(default_value, int):
-                        component = gr.Number(label=param_name, value=default_value, precision=0)
-                    elif isinstance(default_value, float):
-                        component = gr.Number(label=param_name, value=default_value)
-                    elif isinstance(default_value, (dict, list)):
-                        component = gr.Textbox(label=param_name, value=json.dumps(default_value), lines=5, placeholder="输入 JSON 格式")
-                    else:
-                        placeholder = "必填" if default_value is None else ""
-                        component = gr.Textbox(label=param_name, value=str(default_value) if default_value is not None else "", placeholder=placeholder)
-                    components.append(component)
-                # 事件绑定
-                add_step_btn.click(
-                    fn=add_step,
-                    inputs=[workflow_id, action_dropdown] + components,
-                    outputs=[workflow_output, steps_table, workflow_output]
-                )
-            return components
+        def update_params_inputs(action_name):
+            try:
+                if not action_name or action_name == "无操作可用":
+                    logger.info("No valid action selected")
+                    return gr.update(visible=False), {}, {}
+                params = action_registry.get_action_params(action_name)
+                logger.info(f"Generating inputs for action: {action_name}, params: {params}")
+                inputs = {}
+                values = {}
+                with params_container:
+                    gr.Markdown("### 参数输入")
+                    for param_name, default_value in params.items():
+                        if isinstance(default_value, bool):
+                            inputs[param_name] = gr.Checkbox(
+                                label=param_name,
+                                value=default_value if default_value is not None else False
+                            )
+                            values[param_name] = default_value if default_value is not None else False
+                        elif isinstance(default_value, (int, float)):
+                            inputs[param_name] = gr.Number(
+                                label=param_name,
+                                value=default_value if default_value is not None else 0
+                            )
+                            values[param_name] = default_value if default_value is not None else 0
+                        else:
+                            inputs[param_name] = gr.Textbox(
+                                label=param_name,
+                                value=str(default_value) if default_value is not None else ""
+                            )
+                            values[param_name] = str(default_value) if default_value is not None else ""
+                return gr.update(visible=True), inputs, values
+            except Exception as e:
+                logger.error(f"Update params inputs error: {str(e)}")
+                return gr.update(visible=False), {}, {}
+
+        action_dropdown.change(
+            fn=update_params_inputs,
+            inputs=action_dropdown,
+            outputs=[params_container, params_inputs, params_values]
+        )
 
         # 创建工作流
         def create_workflow(name, desc):
@@ -179,34 +192,27 @@ def render():
         )
 
         # 添加步骤，处理动态参数
-        def add_step(workflow_id, action_name, *param_values):
+        def add_step(workflow_id, action_name, params_values):
             try:
                 if not workflow_id:
                     raise WorkflowError("请先创建或加载工作流")
                 if action_name == "无操作可用":
                     raise WorkflowError("请选择有效的操作")
-                params = action_registry.get_action_params(action_name)
-                param_names = list(params.keys())
-                param_dict = {}
-                for i, param_name in enumerate(param_names):
-                    value = param_values[i]
-                    default_value = params[param_name]
-                    if default_value is None and (value is None or value == ""):
-                        raise ValueError(f"参数 {param_name} 为必填项")
-                    if isinstance(default_value, (dict, list)):
-                        try:
-                            value = json.loads(value)
-                        except json.JSONDecodeError:
-                            raise ValueError(f"参数 {param_name} 的 JSON 格式无效")
-                    param_dict[param_name] = value
-                logger.info(f"Adding step: {action_name}, params: {param_dict}")
-                workflow_data = WorkflowService.add_step(workflow_id, action_name, param_dict)
+                params = params_values  # 使用 params_values 中的纯 Python 数据
+                logger.info(f"Adding step: {action_name}, params: {params}")
+                workflow_data = WorkflowService.add_step(workflow_id, action_name, params)
                 steps = [[step["action_name"], json.dumps(step["params"])] for step in workflow_data.get("steps", [])]
                 logger.info(f"Added step: {action_name} to workflow: {workflow_id}")
-                return json.dumps(workflow_data, indent=2), steps, "已添加步骤"
-            except (WorkflowError, ValueError) as e:
+                return json.dumps(workflow_data, indent=2), steps
+            except WorkflowError as e:
                 logger.error(f"Add step error: {str(e)}")
-                return str(e), gr.update(), str(e)
+                return str(e), gr.update()
+
+        add_step_btn.click(
+            fn=add_step,
+            inputs=[workflow_id, action_dropdown, params_values],
+            outputs=[workflow_output, steps_table]
+        )
 
         # 删除步骤
         def delete_step(workflow_id, selected_index):
