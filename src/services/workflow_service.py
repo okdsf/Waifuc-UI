@@ -40,3 +40,26 @@ class WorkflowService:
         workflow.add_step(step)
         workflow_manager.save_workflow(workflow)
         return workflow.to_dict()
+
+    @staticmethod
+    def save_workflow(workflow_data: Dict) -> None:
+        """保存工作流数据"""
+        workflow = workflow_manager.get_workflow(workflow_data["id"])
+        if not workflow:
+            raise WorkflowError("工作流不存在")
+        workflow.name = workflow_data["name"]
+        workflow.description = workflow_data["description"]
+        workflow.steps = [WorkflowStep(step["action_name"], step["params"]) for step in workflow_data.get("steps", [])]
+        workflow_manager.save_workflow(workflow)
+
+    @staticmethod
+    def import_workflow(workflow_data: Dict) -> Dict:
+        """导入工作流数据，返回新创建的工作流数据"""
+        workflow = Workflow(
+            name=workflow_data.get("name", ""),
+            description=workflow_data.get("description", ""),
+            steps=[WorkflowStep(step["action_name"], step["params"]) for step in workflow_data.get("steps", [])]
+        )
+        workflow.id = workflow_data.get("id", workflow_manager.generate_workflow_id())
+        workflow_manager.save_workflow(workflow)
+        return workflow.to_dict()

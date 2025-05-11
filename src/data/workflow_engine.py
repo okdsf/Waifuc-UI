@@ -7,6 +7,7 @@ import uuid
 from typing import Any, Dict, List, Optional, Tuple, Union, Callable
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
+import threading
 
 from .workflow import Workflow, WorkflowStep
 from .execution_history import ExecutionRecord, history_manager
@@ -14,6 +15,9 @@ from src.tools.actions.action_registry import registry as action_registry
 from src.tools.sources.source_registry import registry as source_registry
 from src.tools.actions.waifuc_actions import WaifucActionWrapper
 from waifuc.source import LocalSource
+
+# 新增：定义全局 logger
+logger = logging.getLogger(__name__)
 
 class WorkflowEngine:
     def __init__(self, max_workers: int = 1):
@@ -33,18 +37,23 @@ class WorkflowEngine:
             source_params=source_params,
             output_directory=output_directory
         )
+        cancel_event = threading.Event()
         future = self.executor.submit(
             self._execute_workflow_internal,
             workflow, source_type, source_params, output_directory,
-            record, progress_callback
+            record, progress_callback, cancel_event
         )
-        self._running_tasks[record.id] = (future, record)
+        self._running_tasks[record.id] = (future, record, cancel_event)
         return record
 
     def _execute_workflow_internal(self, workflow: Workflow,
                                   source_type: str, source_params: Dict[str, Any],
                                   output_directory: str, record: ExecutionRecord,
-                                  progress_callback: Callable[[str, float, str], None] = None) -> None:
+                                  progress_callback: Callable[[str, float, str], None] = None,
+                                  cancel_event: threading.Event = None) -> None:
+        class CancelledError(Exception):
+            pass
+
         def clean_metadata(directory):
             try:
                 for filename in os.listdir(directory):
@@ -63,20 +72,23 @@ class WorkflowEngine:
                 log_file = os.path.join("logs", f"{record.id}_log.txt")
                 file_handler = logging.FileHandler(log_file, 'w', 'utf-8')
                 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-                logger = logging.getLogger(f"workflow.{record.id}")
-                logger.setLevel(logging.INFO)
-                logger.addHandler(file_handler)
+                task_logger = logging.getLogger(f"workflow.{record.id}")
+                task_logger.setLevel(logging.INFO)
+                task_logger.addHandler(file_handler)
 
                 if progress_callback:
                     progress_callback("获取图像", 0.0, "准备图像来源...")
-                logger.info(f"开始执行工作流: {workflow.name}")
-                logger.info(f"图像来源: {source_type}")
-                logger.info(f"输出目录: {output_directory}")
+                task_logger.info(f"开始执行工作流: {workflow.name}")
+                task_logger.info(f"图像来源: {source_type}")
+                task_logger.info(f"输出目录: {output_directory}")
+
+                if cancel_event and cancel_event.is_set():
+                    raise CancelledError("任务被取消")
 
                 try:
                     source = source_registry.create_source(source_type, **source_params)
                     record.add_step_log("source", source_type, "started", "创建图像来源")
-                    logger.info("从来源获取图像...")
+                    task_logger.info("从来源获取图像...")
                     if progress_callback:
                         progress_callback("获取图像", 0.1, "正在获取图像...")
                     if source_type == "LocalSource":
@@ -87,9 +99,9 @@ class WorkflowEngine:
                                         if os.path.isfile(os.path.join(input_dir, f)) and
                                         f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')))
                         record.total_images = total_files
-                        logger.info(f"发现 {total_files} 个图像文件")
+                        task_logger.info(f"发现 {total_files} 个图像文件")
                     else:
-                        logger.info("开始下载图像...")
+                        task_logger.info("开始下载图像...")
                         if progress_callback:
                             progress_callback("获取图像", 0.2, "下载图像...")
                         from waifuc.export import SaveExporter
@@ -98,18 +110,21 @@ class WorkflowEngine:
                                         if os.path.isfile(os.path.join(temp_input_dir, f)) and
                                         f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')))
                         record.total_images = total_files
-                        logger.info(f"已下载 {total_files} 个图像文件")
+                        task_logger.info(f"已下载 {total_files} 个图像文件")
                         input_dir = temp_input_dir
                     record.add_step_log("source", source_type, "completed",
                                         f"成功获取 {record.total_images} 个图像文件")
                 except Exception as e:
                     error_msg = f"获取图像失败: {str(e)}"
-                    logger.error(error_msg)
+                    task_logger.error(error_msg)
                     record.add_step_log("source", source_type, "failed", error_msg)
                     record.fail(error_msg)
                     if progress_callback:
                         progress_callback("错误", 0, error_msg)
                     return
+
+                if cancel_event and cancel_event.is_set():
+                    raise CancelledError("任务被取消")
 
                 current_dir = input_dir
                 success_count = 0
@@ -120,14 +135,18 @@ class WorkflowEngine:
                     unique_id = uuid.uuid4().hex[:8]
                     step_output_dir = os.path.join(temp_dir, f"step_{i+1}_{unique_id}")
                     os.makedirs(step_output_dir, exist_ok=True)
-                    logger.info(f"执行步骤 {i+1}/{len(workflow.steps)}: {step.action_name}")
-                    logger.info(f"步骤 {i+1} 输入目录: {current_dir}")
-                    logger.info(f"步骤 {i+1} 输出目录: {step_output_dir}")
+                    task_logger.info(f"执行步骤 {i+1}/{len(workflow.steps)}: {step.action_name}")
+                    task_logger.info(f"步骤 {i+1} 输入目录: {current_dir}")
+                    task_logger.info(f"步骤 {i+1} 输出目录: {step_output_dir}")
                     record.add_step_log(step.id, step.action_name, "started",
                                        f"开始执行步骤 {i+1}/{len(workflow.steps)}")
                     if progress_callback:
                         progress_callback("处理图像", step_progress_base,
                                          f"执行步骤 {i+1}/{len(workflow.steps)}: {step.action_name}")
+
+                    if cancel_event and cancel_event.is_set():
+                        raise CancelledError("任务被取消")
+
                     try:
                         action = action_registry.create_action(step.action_name, **step.params)
                         if isinstance(action, WaifucActionWrapper) and hasattr(action, 'action'):
@@ -137,6 +156,8 @@ class WorkflowEngine:
 
                         if step.action_name == "PreSortImagesAction":
                             for result in action_instance.iter(current_dir, step_output_dir):
+                                if cancel_event and cancel_event.is_set():
+                                    raise CancelledError("任务被取消")
                                 if 'item' in result:
                                     item = result['item']
                                     ratio = item.meta.get('ratio', 'unknown')
@@ -146,10 +167,12 @@ class WorkflowEngine:
                                     output_path = os.path.join(ratio_dir, unique_filename)
                                     item.image.save(output_path, format='PNG')
                                 elif 'counts' in result:
-                                    logger.info(f"PreSortImagesAction 统计: {result['counts']}")
+                                    task_logger.info(f"PreSortImagesAction 统计: {result['counts']}")
 
                         elif step.action_name == "EnhancedImageProcessAction":
                             for result in action_instance.iter(current_dir, step_output_dir):
+                                if cancel_event and cancel_event.is_set():
+                                    raise CancelledError("任务被取消")
                                 if 'item' in result:
                                     item = result['item']
                                     ratio = item.meta.get('ratio', 'unknown')
@@ -160,7 +183,7 @@ class WorkflowEngine:
                                     item.image.save(output_path, format='PNG')
                                 elif 'results' in result:
                                     for ratio, info in result['results'].items():
-                                        logger.info(f"{ratio} 图像: {info['count']} 张")
+                                        task_logger.info(f"{ratio} 图像: {info['count']} 张")
 
                         else:
                             source = LocalSource(current_dir)
@@ -172,7 +195,7 @@ class WorkflowEngine:
                         output_files = [f for f in os.listdir(step_output_dir)
                                       if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff'))]
                         if not output_files:
-                            logger.warning(f"步骤 {step.action_name} 未生成任何图像")
+                            task_logger.warning(f"步骤 {step.action_name} 未生成任何图像")
                         record.add_step_log(step.id, step.action_name, "completed",
                                            f"步骤 {i+1}/{len(workflow.steps)} 成功完成，生成 {len(output_files)} 张图像")
                         if progress_callback:
@@ -182,7 +205,7 @@ class WorkflowEngine:
 
                     except Exception as e:
                         error_msg = f"步骤 {i+1} ({step.action_name}) 执行失败: {str(e)}"
-                        logger.error(error_msg)
+                        task_logger.error(error_msg)
                         record.add_step_log(step.id, step.action_name, "failed", error_msg)
                         failed_count += 1
                         if i == 0:
@@ -192,9 +215,14 @@ class WorkflowEngine:
                             return
                         current_dir = os.path.join(temp_dir, f"step_{i}")
 
+                if cancel_event and cancel_event.is_set():
+                    raise CancelledError("任务被取消")
+
                 if workflow.steps:
                     output_files_count = 0
                     for root, dirs, files in os.walk(current_dir):
+                        if cancel_event and cancel_event.is_set():
+                            raise CancelledError("任务被取消")
                         for filename in files:
                             if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')):
                                 base, ext = os.path.splitext(filename)
@@ -205,8 +233,8 @@ class WorkflowEngine:
                                     shutil.copy2(src_path, dst_path)
                                     output_files_count += 1
                                 except Exception as e:
-                                    logger.error(f"复制最终文件失败: {src_path} -> {dst_path}, 错误: {str(e)}")
-                    logger.info(f"已将 {output_files_count} 个文件复制到 {output_directory}")
+                                    task_logger.error(f"复制最终文件失败: {src_path} -> {dst_path}, 错误: {str(e)}")
+                    task_logger.info(f"已将 {output_files_count} 个文件复制到 {output_directory}")
                     clean_metadata(output_directory)
 
                 success_count = record.total_images - failed_count
@@ -217,21 +245,30 @@ class WorkflowEngine:
                     failed_images=failed_count
                 )
                 history_manager.save_record(record)
-                logger.info(f"工作流执行完成. 总图像: {record.total_images}, "
+                task_logger.info(f"工作流执行完成. 总图像: {record.total_images}, "
                           f"成功: {success_count}, 失败: {failed_count}")
                 if progress_callback:
                     progress_callback("完成", 1.0,
                                     f"处理完成. 总图像: {record.total_images}, "
                                     f"成功: {success_count}, 失败: {failed_count}")
 
+            except CancelledError as e:
+                error_msg = str(e)
+                task_logger.info(error_msg)
+                record.fail(error_msg)
+                history_manager.save_record(record)
+                if progress_callback:
+                    progress_callback("取消", 0.0, error_msg)
+                return
+
             finally:
                 shutil.rmtree(temp_dir)
                 file_handler.close()
-                logger.removeHandler(file_handler)
+                task_logger.removeHandler(file_handler)
 
         except Exception as e:
             error_msg = f"工作流执行出错: {str(e)}"
-            logger.error(error_msg)
+            task_logger.error(error_msg)
             record.fail(error_msg)
             history_manager.save_record(record)
             if progress_callback:
@@ -243,7 +280,7 @@ class WorkflowEngine:
 
     def get_running_tasks(self) -> Dict[str, ExecutionRecord]:
         running_records = {}
-        for task_id, (future, record) in list(self._running_tasks.items()):
+        for task_id, (future, record, cancel_event) in list(self._running_tasks.items()):
             if future.done():
                 del self._running_tasks[task_id]
             else:
@@ -252,16 +289,26 @@ class WorkflowEngine:
 
     def cancel_task(self, task_id: str) -> bool:
         if task_id not in self._running_tasks:
+            logger.warning(f"Task {task_id} not found in running tasks")
             return False
-        future, record = self._running_tasks[task_id]
+        future, record, cancel_event = self._running_tasks[task_id]
         cancelled = future.cancel()
+        cancel_event.set()
         if cancelled:
             record.fail("任务被取消")
             history_manager.save_record(record)
             del self._running_tasks[task_id]
-        return cancelled
+            logger.info(f"Task {task_id} cancelled via future.cancel")
+        else:
+            logger.info(f"Task {task_id} marked for cancellation via cancel_event")
+        return True
 
     def shutdown(self) -> None:
+        for task_id, (future, record, cancel_event) in list(self._running_tasks.items()):
+            cancel_event.set()
+            future.cancel()
+            record.fail("任务被取消（引擎关闭）")
+            history_manager.save_record(record)
         self.executor.shutdown(wait=True)
 
 workflow_engine = WorkflowEngine()

@@ -3,9 +3,14 @@
 对应 PyQt5 的 task_execution.py。
 """
 import gradio as gr
+import asyncio
+import logging
 from src.services.workflow_service import WorkflowService
 from src.services.task_service import TaskService, TaskError
-from src.services.config_service import ConfigService
+
+# 设置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def render(source_data):
     """
@@ -19,7 +24,6 @@ def render(source_data):
         )
         output_dir = gr.Textbox(
             label="输出目录",
-            value=ConfigService.get_output_directory() or "",
             placeholder="请输入输出目录"
         )
         with gr.Row():
@@ -36,21 +40,68 @@ def render(source_data):
             interactive=False
         )
 
-        # 启动任务
-        def start_task(workflow_id, source_data, output_dir):
+        async def start_task(workflow_id, source_data, output_dir):
+            """
+            启动任务，异步轮询进度并更新界面。
+            
+            Args:
+                workflow_id: 工作流 ID
+                source_data: 数据源配置
+                output_dir: 输出目录
+                
+            Yields:
+                更新后的日志、进度条、结果表格、停止按钮可见性、任务 ID
+            """
             try:
                 if not workflow_id or not source_data or not output_dir:
-                    return "请先选择工作流、数据源和输出目录", 0.0, [], gr.update(visible=True), None
+                    yield "请先选择工作流、数据源和输出目录", 0.0, [], gr.update(visible=True), None
+                    return
+                
                 task_id_value = TaskService.start_task(workflow_id, source_data, output_dir)
-                return (
-                    f"任务 {task_id_value} 已启动",
-                    100.0,  # 模拟完成
-                    [["示例步骤", "完成", "详情"]],  # 模拟结果
-                    gr.update(visible=False),
+                logger.info(f"Task started: {task_id_value}")
+                
+                status, progress, message, is_finished = TaskService.get_progress(task_id_value)
+                progress_percent = progress * 100
+                results = [[f"步骤 {i+1}", status, message] for i in range(len(message.splitlines()) or 1)]
+                yield (
+                    message,
+                    progress_percent,
+                    results,
+                    gr.update(visible=not is_finished),
                     task_id_value
                 )
+                
+                while not is_finished:
+                    status, progress, message, is_finished = TaskService.get_progress(task_id_value)
+                    progress_percent = progress * 100
+                    results = [[f"步骤 {i+1}", status, message] for i in range(len(message.splitlines()) or 1)]
+                    
+                    yield (
+                        message,
+                        progress_percent,
+                        results,
+                        gr.update(visible=not is_finished),
+                        task_id_value
+                    )
+                    
+                    if is_finished:
+                        if status == "取消":
+                            yield (
+                                "任务已终止",
+                                0.0,
+                                results,
+                                gr.update(visible=False),
+                                None
+                            )
+                        TaskService.clear_progress(task_id_value)
+                        logger.info(f"Task finished: {task_id_value}, status: {status}")
+                        break
+                    
+                    await asyncio.sleep(0.1)
+            
             except TaskError as e:
-                return str(e), 0.0, [], gr.update(visible=True), None
+                logger.error(f"Start task error: {str(e)}")
+                yield str(e), 0.0, [], gr.update(visible=True), None
 
         start_btn.click(
             fn=start_task,
@@ -58,14 +109,21 @@ def render(source_data):
             outputs=[log_output, progress_bar, results_table, stop_btn, task_id]
         )
 
-        # 停止任务
         def stop_task(task_id):
+            """
+            停止任务，返回取消提示。
+            
+            Args:
+                task_id: 任务 ID
+                
+            Returns:
+                日志、进度条、结果表格、停止按钮可见性、任务 ID
+            """
             try:
-                if not task_id:
-                    raise TaskError("没有运行中的任务")
-                TaskService.stop_task(task_id)
-                return "任务已停止", 0.0, [], gr.update(visible=False), None
+                message = TaskService.stop_task(task_id)
+                return message, 0.0, [], gr.update(visible=True), task_id  # 保持 task_id 等待取消完成
             except TaskError as e:
+                logger.error(f"Stop task error: {str(e)}")
                 return str(e), 0.0, [], gr.update(visible=True), None
 
         stop_btn.click(
@@ -74,12 +132,22 @@ def render(source_data):
             outputs=[log_output, progress_bar, results_table, stop_btn, task_id]
         )
 
-        # 打开输出目录
         def open_output_directory(output_dir):
+            """
+            打开输出目录。
+            
+            Args:
+                output_dir: 输出目录路径
+                
+            Returns:
+                操作结果消息
+            """
             try:
                 TaskService.open_output_directory(output_dir)
+                logger.info(f"Opened output directory: {output_dir}")
                 return "已打开输出目录"
             except TaskError as e:
+                logger.error(f"Open directory error: {str(e)}")
                 return str(e)
 
         open_dir_btn.click(
@@ -87,3 +155,5 @@ def render(source_data):
             inputs=output_dir,
             outputs=log_output
         )
+
+    return task_id
