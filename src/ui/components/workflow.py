@@ -1,9 +1,10 @@
 """
-工作流设计组件：实现创建、编辑、查看工作流，添加/删除/排序步骤，导入/导出工作流。
+工作流设计组件：实现创建、编辑、查看工作流，添加/删除/排序步骤。
 """
 import gradio as gr
 import json
 import logging
+from typing import Optional, Dict, List, Union
 from src.services.workflow_service import WorkflowService, WorkflowError
 from src.tools.actions.action_registry import registry as action_registry
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def render():
     """
-    渲染工作流设计界面，包含创建、加载、步骤管理和导入/导出功能。
+    渲染工作流设计界面，包含创建、加载、步骤管理功能。
     """
     with gr.Column():
         # 工作流信息
@@ -63,12 +64,6 @@ def render():
                 move_down_btn = gr.Button("下移")
                 selected_step_index = gr.State(None)
 
-        # 导入/导出
-        with gr.Group():
-            gr.Markdown("### 导入/导出")
-            import_file = gr.File(label="导入工作流 JSON")
-            export_btn = gr.Button("导出工作流")
-
         # 动态更新动作下拉框
         def update_action_dropdown(category):
             logger.info(f"Updating actions for category: {category}")
@@ -90,18 +85,80 @@ def render():
             logger.info(f"Generating inputs for action: {action_name}, params: {params}")
             with gr.Column():
                 components = []
-                for param_name, default_value in params.items():
-                    if isinstance(default_value, bool):
-                        component = gr.Checkbox(label=param_name, value=default_value)
+                for param_name, (default_value, param_type) in params.items():
+                    # 生成提示信息
+                    info = None
+                    if param_type == Optional[int]:
+                        info = "请输入整数或留空（使用 None）"
+                        component = gr.Number(
+                            label=param_name,
+                            value=default_value,
+                            precision=0,
+                            info=info
+                        )
+                    elif param_type == Optional[float]:
+                        info = "请输入浮点数或留空（使用 None）"
+                        component = gr.Number(
+                            label=param_name,
+                            value=default_value,
+                            info=info
+                        )
+                    elif param_type in (Optional[Dict], Optional[List]):
+                        info = "请输入 JSON 格式（例如 {\"key\": \"value\"}）或留空（使用 None）"
+                        component = gr.Textbox(
+                            label=param_name,
+                            value=json.dumps(default_value, ensure_ascii=False) if default_value is not None else None,
+                            lines=5,
+                            placeholder="请输入 JSON 格式",
+                            info=info
+                        )
+                    elif param_type == Optional[str]:
+                        info = "请输入文本或留空（使用 None）"
+                        component = gr.Textbox(
+                            label=param_name,
+                            value=default_value,
+                            info=info
+                        )
+                    elif isinstance(default_value, bool):
+                        info = "选择是否启用"
+                        component = gr.Checkbox(
+                            label=param_name,
+                            value=default_value,
+                            info=info
+                        )
                     elif isinstance(default_value, int):
-                        component = gr.Number(label=param_name, value=default_value, precision=0)
+                        info = "请输入整数"
+                        component = gr.Number(
+                            label=param_name,
+                            value=default_value,
+                            precision=0,
+                            info=info
+                        )
                     elif isinstance(default_value, float):
-                        component = gr.Number(label=param_name, value=default_value)
+                        info = "请输入浮点数"
+                        component = gr.Number(
+                            label=param_name,
+                            value=default_value,
+                            info=info
+                        )
                     elif isinstance(default_value, (dict, list)):
-                        component = gr.Textbox(label=param_name, value=json.dumps(default_value), lines=5, placeholder="输入 JSON 格式")
+                        info = "请输入 JSON 格式（例如 {\"key\": \"value\"} 或 [1, 2, 3]）"
+                        component = gr.Textbox(
+                            label=param_name,
+                            value=json.dumps(default_value, ensure_ascii=False),
+                            lines=5,
+                            placeholder="请输入 JSON 格式",
+                            info=info
+                        )
                     else:
-                        placeholder = "必填" if default_value is None else ""
-                        component = gr.Textbox(label=param_name, value=str(default_value) if default_value is not None else "", placeholder=placeholder)
+                        info = "请输入文本" if default_value is not None else "请输入文本（必填）"
+                        component = gr.Textbox(
+                            label=param_name,
+                            value=str(default_value) if default_value is not None else "",
+                            placeholder="必填" if default_value is None else "",
+                            info=info
+                        )
+                    logger.info(f"Rendered component for {param_name}: type={param_type}, default={default_value}")
                     components.append(component)
                 # 事件绑定
                 add_step_btn.click(
@@ -118,7 +175,7 @@ def render():
                     raise WorkflowError("工作流名称不能为空")
                 workflow_data = WorkflowService.create_workflow(name, desc)
                 logger.info(f"Created workflow: {workflow_data['id']}")
-                return workflow_data["id"], json.dumps(workflow_data, indent=2), [], ""
+                return workflow_data["id"], json.dumps(workflow_data, indent=2, ensure_ascii=False), [], ""
             except WorkflowError as e:
                 logger.error(f"Create workflow error: {str(e)}")
                 return None, str(e), [], gr.update()
@@ -141,7 +198,7 @@ def render():
                 workflow_data["description"] = desc
                 WorkflowService.save_workflow(workflow_data)
                 logger.info(f"Saved workflow: {workflow_id}")
-                return json.dumps(workflow_data, indent=2)
+                return json.dumps(workflow_data, indent=2, ensure_ascii=False)
             except WorkflowError as e:
                 logger.error(f"Save workflow error: {str(e)}")
                 return str(e)
@@ -188,22 +245,50 @@ def render():
                 params = action_registry.get_action_params(action_name)
                 param_names = list(params.keys())
                 param_dict = {}
-                for i, param_name in enumerate(param_names):
-                    value = param_values[i]
-                    default_value = params[param_name]
-                    if default_value is None and (value is None or value == ""):
-                        raise ValueError(f"参数 {param_name} 为必填项")
-                    if isinstance(default_value, (dict, list)):
-                        try:
-                            value = json.loads(value)
-                        except json.JSONDecodeError:
-                            raise ValueError(f"参数 {param_name} 的 JSON 格式无效")
-                    param_dict[param_name] = value
+                param_value_index = 0
+                for param_name in param_names:
+                    default_value, param_type = params[param_name]
+                    # 处理 Optional 类型，允许空输入为 None
+                    if param_value_index >= len(param_values):
+                        if param_type in (Optional[int], Optional[float], Optional[Dict], Optional[List], Optional[str]):
+                            param_dict[param_name] = None
+                            logger.info(f"Assigned None to {param_name} (empty input, type={param_type})")
+                            continue
+                        raise ValueError(f"参数 {param_name} 缺少值")
+                    value = param_values[param_value_index]
+                    # 空输入处理
+                    if value is None or value == "":
+                        if param_type in (Optional[int], Optional[float], Optional[Dict], Optional[List], Optional[str]):
+                            param_dict[param_name] = None
+                            logger.info(f"Assigned None to {param_name} (empty input, type={param_type})")
+                        else:
+                            raise ValueError(f"参数 {param_name} 为必填项")
+                    else:
+                        # 类型解析
+                        if param_type == Optional[int] or isinstance(default_value, int):
+                            try:
+                                param_dict[param_name] = int(value)
+                            except (ValueError, TypeError):
+                                raise ValueError(f"参数 {param_name} 应为整数")
+                        elif param_type == Optional[float] or isinstance(default_value, float):
+                            try:
+                                param_dict[param_name] = float(value)
+                            except (ValueError, TypeError):
+                                raise ValueError(f"参数 {param_name} 应为浮点数")
+                        elif param_type in (Optional[Dict], Optional[List]) or isinstance(default_value, (dict, list)):
+                            try:
+                                param_dict[param_name] = json.loads(value)
+                            except json.JSONDecodeError:
+                                raise ValueError(f"参数 {param_name} 的 JSON 格式无效")
+                        else:
+                            param_dict[param_name] = value
+                        logger.info(f"Parsed {param_name}: input={value}, type={param_type}, value={param_dict[param_name]}")
+                    param_value_index += 1
                 logger.info(f"Adding step: {action_name}, params: {param_dict}")
                 workflow_data = WorkflowService.add_step(workflow_id, action_name, param_dict)
-                steps = [[step["action_name"], json.dumps(step["params"])] for step in workflow_data.get("steps", [])]
+                steps = [[step["action_name"], json.dumps(step["params"], ensure_ascii=False)] for step in workflow_data.get("steps", [])]
                 logger.info(f"Added step: {action_name} to workflow: {workflow_id}")
-                return json.dumps(workflow_data, indent=2), steps, "已添加步骤"
+                return json.dumps(workflow_data, indent=2, ensure_ascii=False), steps, "已添加步骤"
             except (WorkflowError, ValueError) as e:
                 logger.error(f"Add step error: {str(e)}")
                 return str(e), gr.update(), str(e)
@@ -220,9 +305,9 @@ def render():
                     raise WorkflowError("无效的步骤索引")
                 deleted_step = workflow_data["steps"].pop(selected_index)
                 WorkflowService.save_workflow(workflow_data)
-                steps = [[step["action_name"], json.dumps(step["params"])] for step in workflow_data.get("steps", [])]
+                steps = [[step["action_name"], json.dumps(step["params"], ensure_ascii=False)] for step in workflow_data.get("steps", [])]
                 logger.info(f"Deleted step: {deleted_step['action_name']} from workflow: {workflow_id}")
-                return json.dumps(workflow_data, indent=2), steps, None
+                return json.dumps(workflow_data, indent=2, ensure_ascii=False), steps, None
             except WorkflowError as e:
                 logger.error(f"Delete step error: {str(e)}")
                 return str(e), gr.update(), gr.update()
@@ -252,8 +337,8 @@ def render():
                 else:
                     raise WorkflowError("无法移动步骤")
                 WorkflowService.save_workflow(workflow_data)
-                steps = [[step["action_name"], json.dumps(step["params"])] for step in steps]
-                return json.dumps(workflow_data, indent=2), steps
+                steps = [[step["action_name"], json.dumps(step["params"], ensure_ascii=False)] for step in steps]
+                return json.dumps(workflow_data, indent=2, ensure_ascii=False), steps
             except WorkflowError as e:
                 logger.error(f"Move step error: {str(e)}")
                 return str(e), gr.update()
@@ -277,11 +362,11 @@ def render():
                 workflow_data = WorkflowService.get_workflow(workflow_id)
                 if not workflow_data:
                     return None, "工作流不存在", [], "", ""
-                steps = [[step["action_name"], json.dumps(step["params"])] for step in workflow_data.get("steps", [])]
+                steps = [[step["action_name"], json.dumps(step["params"], ensure_ascii=False)] for step in workflow_data.get("steps", [])]
                 logger.info(f"Loaded workflow: {workflow_id}")
                 return (
                     workflow_id,
-                    json.dumps(workflow_data, indent=2),
+                    json.dumps(workflow_data, indent=2, ensure_ascii=False),
                     steps,
                     workflow_data.get("name", ""),
                     workflow_data.get("description", "")
@@ -294,51 +379,4 @@ def render():
             fn=on_workflow_select,
             inputs=load_dropdown,
             outputs=[workflow_id, workflow_output, steps_table, workflow_name, workflow_desc]
-        )
-
-        # 导入工作流
-        def import_workflow(file):
-            try:
-                if not file:
-                    raise WorkflowError("请上传有效的 JSON 文件")
-                with open(file.name, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                workflow_data = WorkflowService.import_workflow(data)
-                steps = [[step["action_name"], json.dumps(step["params"])] for step in workflow_data.get("steps", [])]
-                logger.info(f"Imported workflow: {workflow_data['id']}")
-                return (
-                    workflow_data["id"],
-                    json.dumps(workflow_data, indent=2),
-                    steps,
-                    workflow_data.get("name", ""),
-                    workflow_data.get("description", "")
-                )
-            except Exception as e:
-                logger.error(f"Import workflow error: {str(e)}")
-                return None, str(e), [], "", ""
-
-        import_file.change(
-            fn=import_workflow,
-            inputs=import_file,
-            outputs=[workflow_id, workflow_output, steps_table, workflow_name, workflow_desc]
-        )
-
-        # 导出工作流
-        def export_workflow(workflow_id):
-            try:
-                if not workflow_id:
-                    raise WorkflowError("请先创建或加载工作流")
-                workflow_data = WorkflowService.get_workflow(workflow_id)
-                if not workflow_data:
-                    raise WorkflowError("工作流不存在")
-                logger.info(f"Exported workflow: {workflow_id}")
-                return gr.File(value=json.dumps(workflow_data, indent=2), label="工作流 JSON")
-            except WorkflowError as e:
-                logger.error(f"Export workflow error: {str(e)}")
-                return str(e)
-
-        export_btn.click(
-            fn=export_workflow,
-            inputs=workflow_id,
-            outputs=gr.File()
         )

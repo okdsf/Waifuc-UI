@@ -2,7 +2,7 @@
 Action注册表模块 - 管理和注册所有可用的图像处理操作
 """
 import inspect
-from typing import Dict, List, Type, Any
+from typing import Dict, List, Type, Any, get_type_hints
 from .base import BaseAction
 from .waifuc_actions import WaifucActionWrapper
 from .transform_actions import (
@@ -167,25 +167,27 @@ class ActionRegistry:
             # 直接返回实例，适用于自定义动作
             return instance
     
-    def get_action_params(self, action_name: str) -> Dict[str, Any]:
+    def get_action_params(self, action_name: str) -> Dict[str, tuple[Any, Any]]:
         """
-        获取操作的参数信息
+        获取操作的参数信息，包括默认值和类型注解
         
         Args:
             action_name: 操作名称
             
         Returns:
-            参数信息字典，包含参数名和默认值（无默认值时为 None）
+            参数信息字典，键为参数名，值为 (默认值, 类型注解) 元组
+            默认值：无默认值时为 None
+            类型注解：无注解时为 Any
         """
         action_class = self.get_action_class(action_name)
         sig = inspect.signature(action_class.__init__)
+        type_hints = get_type_hints(action_class.__init__)
         params = {}
         for name, param in sig.parameters.items():
             if name != 'self':
-                if param.default != inspect.Parameter.empty:
-                    params[name] = param.default
-                else:
-                    params[name] = None  # 表示该参数无默认值，UI 中需处理
+                default_value = param.default if param.default != inspect.Parameter.empty else None
+                param_type = type_hints.get(name, Any)
+                params[name] = (default_value, param_type)
         return params
     
     def get_categories(self) -> List[str]:

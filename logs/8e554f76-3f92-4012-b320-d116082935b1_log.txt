@@ -1,0 +1,9 @@
+2025-05-11 22:33:19,164 - INFO - 开始执行工作流: A1
+2025-05-11 22:33:19,164 - INFO - 图像来源: LocalSource
+2025-05-11 22:33:19,164 - INFO - 输出目录: C:\Users\Administrator\Desktop\data try\test_out1
+2025-05-11 22:33:19,164 - INFO - 从来源获取图像...
+2025-05-11 22:33:19,165 - INFO - 发现 6 个图像文件
+2025-05-11 22:33:19,165 - INFO - 执行步骤 1/1: HeadCountAction
+2025-05-11 22:33:19,165 - INFO - 步骤 1 输入目录: C:\Users\Administrator\Desktop\data try\prospal
+2025-05-11 22:33:19,165 - INFO - 步骤 1 输出目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmpjucuru2p\step_1_5dc63acd
+2025-05-11 22:33:19,861 - ERROR - 步骤 1 (HeadCountAction) 执行失败: '>=' not supported between instances of 'int' and 'str'
