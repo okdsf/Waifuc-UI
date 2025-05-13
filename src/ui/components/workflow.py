@@ -4,6 +4,7 @@
 import gradio as gr
 import json
 import logging
+import pandas as pd
 from typing import Optional, Dict, List, Union
 from src.services.workflow_service import WorkflowService, WorkflowError
 from src.tools.actions.action_registry import registry as action_registry
@@ -16,6 +17,21 @@ def render():
     """
     渲染工作流设计界面，包含创建、加载、步骤管理功能。
     """
+
+    def _format_steps_for_dataframe(steps_list_of_dicts: List[Dict]) -> List[List[Union[int, str]]]:
+        """
+        将步骤字典列表格式化为 gr.Dataframe 所需的列表的列表，
+        并在第一列添加从1开始的行号。
+        """
+        formatted_steps = []
+        for i, step_data in enumerate(steps_list_of_dicts):
+            formatted_steps.append([
+                i + 1,  # 行号 (1-based)
+                step_data.get("action_name", "N/A"), # 操作名称
+                json.dumps(step_data.get("params", {}), ensure_ascii=False) # 参数
+            ])
+        return formatted_steps
+
     with gr.Column():
         # 工作流信息
         workflow_id = gr.State(None)
@@ -52,8 +68,8 @@ def render():
             add_step_btn = gr.Button("添加步骤")
             steps_table = gr.Dataframe(
                 value=[],
-                headers=["操作", "参数"],
-                datatype=["str", "str"],
+                headers=["行号", "操作", "参数"],  
+                datatype=["number", "str", "str"], 
                 interactive=True
             )
             with gr.Row():
@@ -219,7 +235,7 @@ def render():
                 if index < 0 or index >= len(steps_table_value):
                     logger.error(f"Invalid row number: {row_number}")
                     return None, f"无效的行号：{row_number}（应在 1-{len(steps_table_value)} 之间）"
-                action_name = steps_table_value.iloc[index][0]
+                action_name = steps_table_value.iloc[index, 1]
                 logger.info(f"Confirmed selection: row {index}, action: {action_name}")
                 return index, f"已选择第 {index + 1} 步骤：{action_name}"
             except ValueError:
@@ -286,9 +302,9 @@ def render():
                     param_value_index += 1
                 logger.info(f"Adding step: {action_name}, params: {param_dict}")
                 workflow_data = WorkflowService.add_step(workflow_id, action_name, param_dict)
-                steps = [[step["action_name"], json.dumps(step["params"], ensure_ascii=False)] for step in workflow_data.get("steps", [])]
+                steps_for_df = _format_steps_for_dataframe(workflow_data.get("steps", [])) # <--- MODIFIED LINE (使用辅助函数)
                 logger.info(f"Added step: {action_name} to workflow: {workflow_id}")
-                return json.dumps(workflow_data, indent=2, ensure_ascii=False), steps, "已添加步骤"
+                return json.dumps(workflow_data, indent=2, ensure_ascii=False),  steps_for_df, "已添加步骤"
             except (WorkflowError, ValueError) as e:
                 logger.error(f"Add step error: {str(e)}")
                 return str(e), gr.update(), str(e)
@@ -305,9 +321,9 @@ def render():
                     raise WorkflowError("无效的步骤索引")
                 deleted_step = workflow_data["steps"].pop(selected_index)
                 WorkflowService.save_workflow(workflow_data)
-                steps = [[step["action_name"], json.dumps(step["params"], ensure_ascii=False)] for step in workflow_data.get("steps", [])]
+                steps_for_df = _format_steps_for_dataframe(workflow_data.get("steps", [])) 
                 logger.info(f"Deleted step: {deleted_step['action_name']} from workflow: {workflow_id}")
-                return json.dumps(workflow_data, indent=2, ensure_ascii=False), steps, None
+                return json.dumps(workflow_data, indent=2, ensure_ascii=False), steps_for_df, None
             except WorkflowError as e:
                 logger.error(f"Delete step error: {str(e)}")
                 return str(e), gr.update(), gr.update()
@@ -326,19 +342,19 @@ def render():
                 if selected_index is None:
                     raise WorkflowError("请先选择步骤")
                 workflow_data = WorkflowService.get_workflow(workflow_id)
-                steps = workflow_data.get("steps", [])
+                steps_list = workflow_data.get("steps", [])
                 index = selected_index
                 if direction == "up" and index > 0:
-                    steps[index], steps[index - 1] = steps[index - 1], steps[index]
+                    steps_list[index], steps_list[index - 1] = steps_list[index - 1], steps_list[index]
                     logger.info(f"Moved step up: index {index} in workflow: {workflow_id}")
-                elif direction == "down" and index < len(steps) - 1:
-                    steps[index], steps[index + 1] = steps[index + 1], steps[index]
+                elif direction == "down" and index < len(steps_list) - 1:
+                    steps_list[index], steps_list[index + 1] = steps_list[index + 1], steps_list[index]
                     logger.info(f"Moved step down: index {index} in workflow: {workflow_id}")
                 else:
                     raise WorkflowError("无法移动步骤")
                 WorkflowService.save_workflow(workflow_data)
-                steps = [[step["action_name"], json.dumps(step["params"], ensure_ascii=False)] for step in steps]
-                return json.dumps(workflow_data, indent=2, ensure_ascii=False), steps
+                steps_for_df = _format_steps_for_dataframe(steps_list) # <--- MODIFIED LINE (使用辅助函数和更新后的 steps_list)
+                return json.dumps(workflow_data, indent=2, ensure_ascii=False), steps_for_df # <--- MODIFIED LINE
             except WorkflowError as e:
                 logger.error(f"Move step error: {str(e)}")
                 return str(e), gr.update()
@@ -362,7 +378,7 @@ def render():
                 workflow_data = WorkflowService.get_workflow(workflow_id)
                 if not workflow_data:
                     return None, "工作流不存在", [], "", ""
-                steps = [[step["action_name"], json.dumps(step["params"], ensure_ascii=False)] for step in workflow_data.get("steps", [])]
+                steps_for_df = _format_steps_for_dataframe(workflow_data.get("steps", [])) # <--- MODIFIED LINE (使用辅助函数)
                 logger.info(f"Loaded workflow: {workflow_id}")
                 return (
                     workflow_id,
