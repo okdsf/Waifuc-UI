@@ -190,7 +190,14 @@ def render():
                     raise WorkflowError("工作流名称不能为空")
                 workflow_data = WorkflowService.create_workflow(name, desc)
                 logger.info(f"Created workflow: {workflow_data['id']}")
-                return workflow_data["id"], json.dumps(workflow_data, indent=2, ensure_ascii=False), [], ""
+                updated_choices = [(w["name"], w["id"]) for w in WorkflowService.get_all_workflows()] or [("无工作流", "")]
+                return (
+                    workflow_data["id"],
+                    json.dumps(workflow_data, indent=2, ensure_ascii=False),
+                    [],  # steps_table
+                    "",  # workflow_name
+                    gr.update(choices=updated_choices) 
+                )
             except WorkflowError as e:
                 logger.error(f"Create workflow error: {str(e)}")
                 return None, str(e), [], gr.update()
@@ -198,7 +205,7 @@ def render():
         create_btn.click(
             fn=create_workflow,
             inputs=[workflow_name, workflow_desc],
-            outputs=[workflow_id, workflow_output, steps_table, workflow_name]
+            outputs=[workflow_id, workflow_output, steps_table, workflow_name, load_dropdown]
         )
 
         # 保存工作流
@@ -213,7 +220,11 @@ def render():
                 workflow_data["description"] = desc
                 WorkflowService.save_workflow(workflow_data)
                 logger.info(f"Saved workflow: {workflow_id}")
-                return json.dumps(workflow_data, indent=2, ensure_ascii=False)
+                updated_choices = [(w["name"], w["id"]) for w in WorkflowService.get_all_workflows()] or [("无工作流", "")]
+                return (
+                    json.dumps(workflow_data, indent=2, ensure_ascii=False),
+                    gr.update(choices=updated_choices) # <--- 新增更新 load_dropdown
+                )
             except WorkflowError as e:
                 logger.error(f"Save workflow error: {str(e)}")
                 return str(e)
@@ -221,7 +232,7 @@ def render():
         save_btn.click(
             fn=save_workflow,
             inputs=[workflow_id, workflow_name, workflow_desc],
-            outputs=workflow_output
+            outputs=[workflow_output, load_dropdown]
         )
 
         def handle_table_select(evt: gr.SelectData, current_steps_df_data: pd.DataFrame):
