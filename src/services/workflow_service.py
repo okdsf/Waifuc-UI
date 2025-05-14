@@ -63,3 +63,52 @@ class WorkflowService:
         workflow.id = workflow_data.get("id", workflow_manager.generate_workflow_id())
         workflow_manager.save_workflow(workflow)
         return workflow.to_dict()
+    
+    @staticmethod
+    def save_workflow(workflow_data: Dict) -> None: # 这个方法已存在，可以用于整体保存
+        """保存工作流数据"""
+        workflow = workflow_manager.get_workflow(workflow_data["id"])
+        if not workflow:
+            raise WorkflowError("工作流不存在")
+        workflow.name = workflow_data["name"]
+        workflow.description = workflow_data["description"]
+        # 从字典列表重新构建步骤对象列表
+        workflow.steps = [WorkflowStep.from_dict(step_dict) for step_dict in workflow_data.get("steps", [])]
+        workflow_manager.save_workflow(workflow)
+
+    # === 新增 update_step 方法 开始 ===
+    @staticmethod
+    def update_step(workflow_id: str, step_index: int, new_action_name: str, new_params: Dict) -> Dict:
+        """
+        更新工作流中指定索引的步骤。
+
+        Args:
+            workflow_id: 工作流的ID。
+            step_index: 要更新的步骤的0-based索引。
+            new_action_name: 步骤的新动作名称。
+            new_params: 步骤的新参数字典。
+
+        Returns:
+            更新后的完整工作流数据的字典。
+
+        Raises:
+            WorkflowError: 如果工作流或步骤索引无效。
+        """
+        workflow = workflow_manager.get_workflow(workflow_id)
+        if not workflow:
+            raise WorkflowError(f"工作流 '{workflow_id}' 未找到，无法更新步骤。")
+
+        if not (0 <= step_index < len(workflow.steps)):
+            raise WorkflowError(f"步骤索引 {step_index} 无效。工作流 '{workflow_id}' 共有 {len(workflow.steps)} 个步骤。")
+
+  
+        # WorkflowStep 对象在 workflow.steps 中应该是 WorkflowStep 的实例
+        step_to_update: WorkflowStep = workflow.steps[step_index]
+        step_to_update.action_name = new_action_name
+        step_to_update.params = new_params
+        # WorkflowStep 内部没有 updated_at，但 Workflow 对象有，它会在 save_workflow 时更新
+
+        # 保存整个更新后的 Workflow 对象
+        workflow_manager.save_workflow(workflow) # workflow_manager.save_workflow 内部会处理 updated_at
+        
+        return workflow.to_dict()

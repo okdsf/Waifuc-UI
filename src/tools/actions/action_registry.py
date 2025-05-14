@@ -2,7 +2,7 @@
 Action注册表模块 - 管理和注册所有可用的图像处理操作
 """
 import inspect
-from typing import Dict, List, Type, Any, get_type_hints
+from typing import Dict, List, Type, Any, get_type_hints,Optional
 from .base import BaseAction
 from .waifuc_actions import WaifucActionWrapper
 from .transform_actions import (
@@ -223,6 +223,20 @@ class ActionRegistry:
         """
         return self._categories.copy()
 
+
+    def get_category_for_action(self, target_action_name: str) -> Optional[str]:
+            """
+            根据操作名称查找其所属的类别。
+            """
+            all_categories = self.get_categories() # 使用您已有的方法
+            if not all_categories:
+                return None
+
+            for category_name in all_categories:
+                actions_in_this_category = self.get_actions_in_category(category_name) # 使用您已有的方法
+                if target_action_name in actions_in_this_category:
+                    return category_name
+            return None # 如果遍历所有类别都未找到该操作
 
 # 创建全局实例
 registry = ActionRegistry()
