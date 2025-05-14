@@ -2,7 +2,7 @@ import gradio as gr
 import asyncio
 import logging
 import re
-import pandas as pd
+import pandas as pd # 如果完全删除了 step_states 和 results，并且没有其他地方用 pd，可以考虑删除此导入
 from src.services.workflow_service import WorkflowService
 from src.services.task_service import TaskService, TaskError
 
@@ -24,96 +24,62 @@ def render(source_data):
         gr.Markdown("### 任务进度")
         progress_bar = gr.Slider(minimum=0, maximum=100, label="进度", interactive=False)
         log_output = gr.Textbox(label="任务日志", interactive=False, lines=10)
-        results_table = gr.Dataframe(value=[], headers=["步骤", "状态", "详情"], datatype=["str", "str", "str"], interactive=False)
+        # results_table = gr.Dataframe(value=[], headers=["步骤", "状态", "详情"], datatype=["str", "str", "str"], interactive=False) # <-- 已删除
 
         async def start_task(workflow_id, source_data, output_dir):
             try:
                 if not workflow_id or not source_data or not output_dir:
-                    yield "请先选择工作流、数据源和输出目录", 0.0, pd.DataFrame(columns=["步骤", "状态", "详情"]), gr.update(visible=True), None
+                    # yield "请先选择工作流、数据源和输出目录", 0.0, pd.DataFrame(columns=["步骤", "状态", "详情"]), gr.update(visible=True), None # <-- 修改前
+                    yield "请先选择工作流、数据源和输出目录", 0.0, gr.update(visible=True), None # <-- 修改后
                     return
                 
                 task_id_value = TaskService.start_task(workflow_id, source_data, output_dir)
                 logger.info(f"Task started: {task_id_value}")
                 
-                # 初始化状态
-                step_states = {}
-                total_steps = 1  # 默认值，稍后从日志动态更新
-                last_log = ""  # 跟踪最新的日志内容
+                last_log = "" # 跟踪最新的日志内容
 
                 while True:
                     status, progress, message, is_finished = TaskService.get_progress(task_id_value)
                     progress_percent = progress * 100
-
-                    # 使用 message 作为 log_output 的内容（假设 message 直接输出到 log_output）
                     current_log = message.strip()
 
-                    # 只在日志有更新时解析
+                    # 日志解析逻辑可以保留，因为它可能影响 current_log 的内容，
+                    # 或者你将来可能想基于此做其他事情。
+                    # 但 step_states 和 results 的生成及更新被移除。
                     if current_log and current_log != last_log:
                         last_log = current_log
-
-                        # 解析日志：执行步骤
+                        # (可选) 如果日志解析只为了 step_states，这部分也可以简化或移除
                         match_step = re.match(r"执行步骤 (\d+)/(\d+): (.+)", current_log)
                         if match_step:
-                            current_step, total, action_name = match_step.groups()
-                            total_steps = int(total)
-                            current_step = int(current_step)
-
-                            # 初始化所有步骤（仅在第一次匹配时）
-                            if not step_states:
-                                step_states = {
-                                    f"步骤 {i+1}/{total_steps}": {"status": "未开始", "message": "等待执行"}
-                                    for i in range(total_steps)
-                                }
-
-                            # 更新状态：前 N-1 步完成，当前步骤处理中，后续步骤未开始
-                            for step_id in step_states:
-                                step_num = int(step_id.split('/')[0].split()[1])
-                                if step_num < current_step:
-                                    step_states[step_id] = {"status": "完成", "message": "步骤执行完成"}
-                                elif step_num == current_step:
-                                    step_states[step_id] = {"status": "处理中", "message": f"{action_name} 执行中"}
-                                else:
-                                    step_states[step_id] = {"status": "未开始", "message": "等待执行"}
-
-                        # 解析日志：任务完成
+                            pass # 原本这里更新 step_states
                         match_complete = re.match(r"处理完成\. 总图像: (\d+), 成功: (\d+), 失败: (\d+)", current_log)
                         if match_complete:
-                            for step_id in step_states:
-                                step_states[step_id] = {"status": "完成", "message": "步骤执行完成"}
-
-                        # 解析日志：终止信号
+                            pass # 原本这里更新 step_states
                         if current_log == "终止信号已发送，需等待当前工作流步骤完成":
-                            for step_id in step_states:
-                                if step_states[step_id]["status"] == "处理中":
-                                    step_states[step_id] = {"status": "取消中", "message": "等待当前步骤终止"}
-                                elif step_states[step_id]["status"] == "未开始":
-                                    step_states[step_id] = {"status": "未执行", "message": "任务被终止"}
-
-                        # 解析日志：任务已终止
+                            pass # 原本这里更新 step_states
                         if current_log == "任务已终止":
-                            for step_id in step_states:
-                                if step_states[step_id]["status"] in ["处理中", "取消中"]:
-                                    step_states[step_id] = {"status": "失败", "message": "任务被取消"}
-                                elif step_states[step_id]["status"] == "未开始":
-                                    step_states[step_id] = {"status": "未执行", "message": "任务被取消"}
+                            pass # 原本这里更新 step_states
 
-                    # 生成 results_table 数据
-                    results = pd.DataFrame([
-                        [step_id, step_states[step_id]["status"], step_states[step_id]["message"]]
-                        for step_id in step_states
-                    ], columns=["步骤", "状态", "详情"]) if step_states else pd.DataFrame(columns=["步骤", "状态", "详情"])
+                    # results = pd.DataFrame(...) # <-- 已删除
 
-                    yield (
+                    # yield ( # <-- 修改前
+                    #     current_log,
+                    #     progress_percent,
+                    #     results,
+                    #     gr.update(visible=not is_finished),
+                    #     task_id_value
+                    # )
+                    yield ( # <-- 修改后
                         current_log,
                         progress_percent,
-                        results,
                         gr.update(visible=not is_finished),
                         task_id_value
                     )
                     
                     if is_finished:
                         if status == "取消":
-                            yield ("任务已终止", 0.0, results, gr.update(visible=False), None)
+                            # yield ("任务已终止", 0.0, results, gr.update(visible=False), None) # <-- 修改前
+                            yield ("任务已终止", 0.0, gr.update(visible=False), None) # <-- 修改后
                         TaskService.clear_progress(task_id_value)
                         logger.info(f"Task finished: {task_id_value}, status: {status}")
                         break
@@ -122,24 +88,29 @@ def render(source_data):
             
             except TaskError as e:
                 logger.error(f"Start task error: {str(e)}")
-                yield str(e), 0.0, pd.DataFrame(columns=["步骤", "状态", "详情"]), gr.update(visible=True), None
+                # yield str(e), 0.0, pd.DataFrame(columns=["步骤", "状态", "详情"]), gr.update(visible=True), None # <-- 修改前
+                yield str(e), 0.0, gr.update(visible=True), None # <-- 修改后
 
-        start_btn.click(fn=start_task, inputs=[workflow_dropdown, source_data, output_dir], outputs=[log_output, progress_bar, results_table, stop_btn, task_id])
+        # start_btn.click(fn=start_task, inputs=[workflow_dropdown, source_data, output_dir], outputs=[log_output, progress_bar, results_table, stop_btn, task_id]) # <-- 修改前
+        start_btn.click(fn=start_task, inputs=[workflow_dropdown, source_data, output_dir], outputs=[log_output, progress_bar, stop_btn, task_id]) # <-- 修改后
 
-        def stop_task(task_id):
+        def stop_task(task_id_val): # Renamed task_id to task_id_val to avoid conflict with gr.State
             try:
-                message = TaskService.stop_task(task_id)
-                return message, 0.0, pd.DataFrame(columns=["步骤", "状态", "详情"]), gr.update(visible=True), task_id
+                message = TaskService.stop_task(task_id_val)
+                # return message, 0.0, pd.DataFrame(columns=["步骤", "状态", "详情"]), gr.update(visible=True), task_id_val # <-- 修改前
+                return message, 0.0, gr.update(visible=True), task_id_val # <-- 修改后
             except TaskError as e:
                 logger.error(f"Stop task error: {str(e)}")
-                return str(e), 0.0, pd.DataFrame(columns=["步骤", "状态", "详情"]), gr.update(visible=True), None
+                # return str(e), 0.0, pd.DataFrame(columns=["步骤", "状态", "详情"]), gr.update(visible=True), None # <-- 修改前
+                return str(e), 0.0, gr.update(visible=True), None # <-- 修改后
 
-        stop_btn.click(fn=stop_task, inputs=task_id, outputs=[log_output, progress_bar, results_table, stop_btn, task_id])
+        # stop_btn.click(fn=stop_task, inputs=task_id, outputs=[log_output, progress_bar, results_table, stop_btn, task_id]) # <-- 修改前
+        stop_btn.click(fn=stop_task, inputs=task_id, outputs=[log_output, progress_bar, stop_btn, task_id]) # <-- 修改后
 
-        def open_output_directory(output_dir):
+        def open_output_directory(output_dir_val): # Renamed output_dir to avoid conflict
             try:
-                TaskService.open_output_directory(output_dir)
-                logger.info(f"Opened output directory: {output_dir}")
+                TaskService.open_output_directory(output_dir_val)
+                logger.info(f"Opened output directory: {output_dir_val}")
                 return "已打开输出目录"
             except TaskError as e:
                 logger.error(f"Open directory error: {str(e)}")

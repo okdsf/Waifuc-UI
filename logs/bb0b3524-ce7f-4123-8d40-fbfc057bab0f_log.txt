@@ -1,0 +1,19 @@
+2025-05-14 21:17:48,154 - INFO - 开始执行工作流: HELLO DEAR MONIKA
+2025-05-14 21:17:48,155 - INFO - 图像来源: LocalSource
+2025-05-14 21:17:48,155 - INFO - 输出目录: C:\Users\Administrator\Desktop\data try\prospal
+2025-05-14 21:17:48,155 - INFO - 从来源获取图像...
+2025-05-14 21:17:48,155 - INFO - 发现 0 个图像文件
+2025-05-14 21:17:48,156 - INFO - 执行步骤 1/3: ModeConvertAction
+2025-05-14 21:17:48,156 - INFO - 步骤 1 输入目录: C:\Users\Administrator\Desktop\data try\prospal
+2025-05-14 21:17:48,156 - INFO - 步骤 1 输出目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmpk3v7_cl7\step_1_7563d89c
+2025-05-14 21:17:48,159 - WARNING - 步骤 ModeConvertAction 未生成任何图像
+2025-05-14 21:17:48,159 - INFO - 执行步骤 2/3: BackgroundRemovalAction
+2025-05-14 21:17:48,159 - INFO - 步骤 2 输入目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmpk3v7_cl7\step_1_7563d89c
+2025-05-14 21:17:48,159 - INFO - 步骤 2 输出目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmpk3v7_cl7\step_2_2caf8f43
+2025-05-14 21:17:48,162 - WARNING - 步骤 BackgroundRemovalAction 未生成任何图像
+2025-05-14 21:17:48,162 - INFO - 执行步骤 3/3: ThreeStageSplitAction
+2025-05-14 21:17:48,162 - INFO - 步骤 3 输入目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmpk3v7_cl7\step_2_2caf8f43
+2025-05-14 21:17:48,162 - INFO - 步骤 3 输出目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmpk3v7_cl7\step_3_5ca8b188
+2025-05-14 21:17:48,164 - WARNING - 步骤 ThreeStageSplitAction 未生成任何图像
+2025-05-14 21:17:48,164 - INFO - 已将 0 个文件复制到 C:\Users\Administrator\Desktop\data try\prospal
+2025-05-14 21:17:48,165 - INFO - 工作流执行完成. 总图像: 0, 成功: 0, 失败: 0

@@ -1,0 +1,20 @@
+2025-05-14 21:27:34,632 - INFO - 开始执行工作流: HELLO DEAR MONIKA
+2025-05-14 21:27:34,633 - INFO - 图像来源: LocalSource
+2025-05-14 21:27:34,633 - INFO - 输出目录: C:\Users\Administrator\Desktop\data try\test_out
+2025-05-14 21:27:34,633 - INFO - 从来源获取图像...
+2025-05-14 21:27:34,634 - INFO - 发现 6 个图像文件
+2025-05-14 21:27:34,634 - INFO - 执行步骤 1/4: BackgroundRemovalAction
+2025-05-14 21:27:34,634 - INFO - 步骤 1 输入目录: C:\Users\Administrator\Desktop\data try\prospal
+2025-05-14 21:27:34,635 - INFO - 步骤 1 输出目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmpf3cg8sy3\step_1_6f079597
+2025-05-14 21:27:50,178 - INFO - 执行步骤 2/4: ModeConvertAction
+2025-05-14 21:27:50,179 - INFO - 步骤 2 输入目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmpf3cg8sy3\step_1_6f079597
+2025-05-14 21:27:50,179 - INFO - 步骤 2 输出目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmpf3cg8sy3\step_2_cec12d62
+2025-05-14 21:27:52,981 - INFO - 执行步骤 3/4: ThreeStageSplitAction
+2025-05-14 21:27:52,981 - INFO - 步骤 3 输入目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmpf3cg8sy3\step_2_cec12d62
+2025-05-14 21:27:52,981 - INFO - 步骤 3 输出目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmpf3cg8sy3\step_3_2dbc20a7
+2025-05-14 21:28:07,588 - INFO - 执行步骤 4/4: ESRGANActionWrapper
+2025-05-14 21:28:07,588 - INFO - 步骤 4 输入目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmpf3cg8sy3\step_3_2dbc20a7
+2025-05-14 21:28:07,588 - INFO - 步骤 4 输出目录: C:\Users\ADMINI~1\AppData\Local\Temp\tmpf3cg8sy3\step_4_fbebe294
+2025-05-14 21:28:12,052 - ERROR - 步骤 4 (ESRGANActionWrapper) 执行失败: invalid literal for int() with base 10: '1.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61.61
+2025-05-14 21:28:12,080 - INFO - 已将 0 个文件复制到 C:\Users\Administrator\Desktop\data try\test_out
+2025-05-14 21:28:12,081 - INFO - 工作流执行完成. 总图像: 6, 成功: 5, 失败: 1

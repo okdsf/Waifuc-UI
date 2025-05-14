@@ -3,7 +3,7 @@ Gradio 主应用：整合工作流设计、数据源选择、任务执行、历�
 包含插图、自定义 CSS 和状态栏。
 """
 import gradio as gr
-from src.ui.components import workflow, source, task, history, settings, components
+from src.ui.components import workflow, source, task, history, settings
 
 # 自定义 CSS
 custom_css = """
@@ -52,8 +52,7 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=custom_css) as app:
             history.render()
         with gr.Tab("设置"):
             settings.render()
-        with gr.Tab("组件说明"):
-            components.render()
+
 
 
     # 状态栏
